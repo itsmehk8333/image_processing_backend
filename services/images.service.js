@@ -1,6 +1,6 @@
 import s3 from "../config/s3.js";
 import prisma from "../db/db.js";
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
 
 export async function uploadImageSaveInDb(data) {
@@ -34,4 +34,21 @@ export async function getImages(s3Key) {
     } catch (error) {
         console.log(error)
     }
+}
+
+
+export async function uploadImageAfterAIProcessing(buffer, filename){
+    console.log(buffer , filename)
+
+     const command = new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET_NAME,
+    Key: filename,
+    Body: buffer,
+    ContentType: "image/png",
+  });
+
+  await s3.send(command);
+
+  return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
+ 
 }

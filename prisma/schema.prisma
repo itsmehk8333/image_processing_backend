@@ -19,6 +19,8 @@ model User {
   password  String
   images    Image[]
   createdAt DateTime @default(now())
+    delayedJobs DelayedJob[]
+
 }
 
 model Image {
@@ -31,4 +33,27 @@ model Image {
   size        Int
   format      String
   createdAt   DateTime @default(now())
+}
+
+model DelayedJob {
+  id Int @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobName    String
+  imageUrl    String
+  params      Json?                    // e.g. { type: "upscale", filter: "sharpen" }
+  status      JobStatus @default(PENDING)
+  result      String?                  // AI result URL or response
+  error       String?
+  retryCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+   @@map("delayed_jobs")
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }

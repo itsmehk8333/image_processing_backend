@@ -3,6 +3,7 @@ import upload from "../middleware/upload.js";
 import { getImages, uploadImageSaveInDb } from "../services/images.service.js";
 import prisma from "../db/db.js";
 import sharp from "sharp";
+import { imageQueue } from "../src/queues/imageQueue.js";
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ router.post("/upload_image", upload.single("file"), async (req, res) => {
   try {
     const saveImage = await uploadImageSaveInDb({
       filename: req.file.originalname,
-      s3Key: req.file.key,  
+      s3Key: req.file.key,
       originalUrl: req.file.location,
       size: req.file.size,
       format: req.file.mimetype,
@@ -25,17 +26,16 @@ router.post("/upload_image", upload.single("file"), async (req, res) => {
   }
 })
 
-
 router.get("/process-image/:id", async (req, res) => {
   try {
-    const { id} = req.params;
-    const {  w, h, quality, blur, sharpen, format, grayscale, flip } = req.query;
+    const { id } = req.params;
+    const { w, h, quality, blur, sharpen, format, grayscale, flip } = req.query;
     const image = await prisma.image.findUnique({
       where: { id: Number(id) }
     })
-    if(image == null){
+    if (image == null) {
       res.status(404).json({
-        message : "Image not found!"
+        message: "Image not found!"
       })
     }
     const Buffer = await getImages(image.s3Key);
@@ -49,7 +49,7 @@ router.get("/process-image/:id", async (req, res) => {
     }
 
     if (flip === 'true') {
-      processedImage.flip();       
+      processedImage.flip();
     }
 
     if (blur && Number(blur) >= 0.3) {
@@ -57,7 +57,7 @@ router.get("/process-image/:id", async (req, res) => {
     }
 
     if (sharpen === 'true') {
-      processedImage.sharpen();    
+      processedImage.sharpen();
     }
 
     const outputFormat = format || 'jpeg';
@@ -78,6 +78,48 @@ router.get("/process-image/:id", async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).json({
+      message: error.message
+    })
+  }
+})
+
+
+router.post("/ai-image-processing", async (req, res) => {
+  try {
+    const { imageUrl, processingType, params, userId  , prompt } = req.body;
+    const parsedUserId = parseInt(userId);
+      const user = await prisma.user.findUnique({
+      where: { id: parsedUserId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+
+    const job = await prisma.delayedJob.create({
+      data: {
+        userId : parsedUserId, 
+        jobName: processingType, imageUrl,
+        params,
+        status: 'PENDING'
+      }
+    })
+
+    await imageQueue.add("process-image" , {
+        jobId: job.id,
+        imageUrl,
+        processingType,
+        params,
+        prompt
+    })
+
+   res.json({ jobId: job.id, status: 'PENDING' });
+
+  } catch (error) {
+    console.log(error.message);
+    res.status(500).send({
+      success :false,
       message : error.message
     })
   }
